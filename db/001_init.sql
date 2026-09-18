@@ -38,9 +38,11 @@ CREATE TABLE conversations (
   organization_id uuid        NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   contact_id      uuid        NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
   channel         channel     NOT NULL,
-  -- Desnormalizado: se actualiza en cada insert de message.
+  -- Desnormalizado: siempre = max(created_at) de sus mensajes; se actualiza en cada insert.
   -- Es lo que hace barato ordenar la bandeja por "último mensaje".
-  last_message_at timestamptz NOT NULL DEFAULT now(),
+  -- timestamptz(3): precisión de milisegundos, igual que Date en JS. Así el cursor de
+  -- paginación (que viaja como ISO string) compara exacto y no saltea filas.
+  last_message_at timestamptz(3) NOT NULL DEFAULT now(),
   created_at      timestamptz NOT NULL DEFAULT now(),
   -- Decisión: una conversación abierta por contacto (sin estado open/closed en este alcance).
   CONSTRAINT conversations_contact_uniq UNIQUE (contact_id)
@@ -56,7 +58,7 @@ CREATE TABLE messages (
   -- Id del mensaje en el proveedor. Obligatorio en inbound (es la clave de idempotencia),
   -- NULL en outbound hasta que el proveedor lo confirme.
   external_id     text,
-  created_at      timestamptz       NOT NULL DEFAULT now(),
+  created_at      timestamptz(3)    NOT NULL DEFAULT now(), -- (3): ver conversations.last_message_at
   -- Idempotencia del webhook: el mismo mensaje reenviado por el proveedor
   -- choca acá y se descarta con ON CONFLICT DO NOTHING.
   -- Scope por conversación (que ya implica tenant y canal): distintos proveedores pueden repetir ids.

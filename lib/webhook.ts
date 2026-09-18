@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { pool, query } from "@/lib/db";
 import type { Channel } from "@/lib/types";
+import { touchConversationSql } from "@/lib/conversations";
 
 export const channelSchema = z.enum(["whatsapp", "telegram", "webchat"]);
 
@@ -86,13 +87,9 @@ export async function ingestInboundMessage(
       return { outcome: "duplicate", conversationId };
     }
 
-    // 4. Solo si fue nuevo: subir la conversación en la bandeja.
-    await client.query(
-      `UPDATE conversations
-       SET last_message_at = GREATEST(last_message_at, (SELECT created_at FROM messages WHERE id = $2))
-       WHERE id = $1`,
-      [conversationId, messageId],
-    );
+    // 4. Solo si fue nuevo: recalcular last_message_at desde los mensajes (única fuente
+    //    de verdad; el índice (conversation_id, created_at DESC) lo hace O(1)).
+    await client.query(touchConversationSql, [conversationId]);
 
     await client.query("COMMIT");
     return { outcome: "created", messageId, conversationId };

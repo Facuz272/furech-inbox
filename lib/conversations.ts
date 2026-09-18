@@ -10,6 +10,14 @@ import type {
 } from "@/lib/types";
 import { sendMessage } from "@/lib/provider";
 
+// Mantiene conversations.last_message_at = max(messages.created_at): única fuente de
+// verdad, y con el índice (conversation_id, created_at DESC) el max es una lectura.
+// Lo usan el webhook (entrante) y el envío saliente.
+export const touchConversationSql = `
+  UPDATE conversations
+  SET last_message_at = (SELECT max(created_at) FROM messages WHERE conversation_id = $1)
+  WHERE id = $1`;
+
 // ---------------------------------------------------------------------------
 // Paginación por cursor (keyset) sobre (last_message_at, id).
 // Offset se rompe en una bandeja viva: si entra un mensaje entre página 1 y 2,
@@ -197,10 +205,7 @@ export async function sendOutboundMessage(
       [organizationId, conversationId, text],
     );
     pending = inserted.rows[0]!;
-    await client.query(
-      `UPDATE conversations SET last_message_at = $2 WHERE id = $1`,
-      [conversationId, pending.created_at],
-    );
+    await client.query(touchConversationSql, [conversationId]);
     await client.query("COMMIT");
   } catch (err) {
     await client.query("ROLLBACK");
