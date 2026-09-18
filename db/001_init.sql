@@ -12,9 +12,12 @@ CREATE TYPE message_direction AS ENUM ('inbound', 'outbound');
 CREATE TYPE message_status AS ENUM ('received', 'pending', 'sent', 'failed');
 
 CREATE TABLE organizations (
-  id         uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-  name       text        NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now()
+  id            uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  name          text        NOT NULL,
+  -- Secreto que el proveedor manda en Authorization: Bearer. El webhook resuelve
+  -- la organización desde acá: el cliente nunca envía un organization_id.
+  webhook_token text        NOT NULL UNIQUE DEFAULT encode(gen_random_bytes(24), 'hex'),
+  created_at    timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE contacts (
