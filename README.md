@@ -6,7 +6,9 @@ Next.js 15 (App Router) · TypeScript strict · PostgreSQL (Neon) · SQL a mano 
 
 ```bash
 npm install
-cp .env.example .env     # completar DATABASE_URL
+cp .env.example .env     # completar DATABASE_URL (probado con Neon; cualquier Postgres ≥ 13 sirve)
+# sin Postgres a mano:  docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=pg postgres:16
+#                       DATABASE_URL=postgresql://postgres:pg@localhost:5432/postgres
 npm run db:migrate       # aplica db/*.sql en una transacción
 npm run db:seed          # crea 2 organizaciones e imprime ids + webhook_token → pegar DEMO_* en .env
 npm run dev
@@ -32,7 +34,7 @@ Mapa: [`db/001_init.sql`](db/001_init.sql) · [`lib/webhook.ts`](lib/webhook.ts)
 
 **3. Listado: una query y cursor, no offset.** `LEFT JOIN LATERAL (… ORDER BY created_at DESC LIMIT 1)` trae conversación + contacto + último mensaje de una vez (el N+1 sería una query por fila). Paginación keyset sobre `(last_message_at, id)`: en una bandeja viva, el offset repite o saltea filas cuando entra un mensaje entre páginas. `limit + 1` para saber si hay siguiente sin `COUNT`; cursor malformado → 400.
 
-**Índices** (detalle en el SQL): `conversations (organization_id, last_message_at DESC, id DESC)` cubre exactamente el `WHERE` + `ORDER BY` del listado; `messages (conversation_id, created_at DESC, id DESC)` sirve al hilo y a la subquery LATERAL; `contacts (organization_id, channel, external_id)` UNIQUE es la clave del upsert del webhook. `organization_id` redundante en todas las tablas hijas: filtrar sin JOIN y base para RLS.
+**Índices** (detalle en el SQL): `conversations (organization_id, last_message_at DESC, id DESC)` cubre exactamente el `WHERE` + `ORDER BY` del listado; `messages (conversation_id, created_at DESC, id DESC)` sirve al hilo y a la subquery LATERAL; `contacts (organization_id, channel, external_id)` UNIQUE es la clave del upsert del webhook y, por empezar en `organization_id`, cubre el filtro por tenant (no hace falta otro índice). `organization_id` redundante en todas las tablas hijas, y **FKs compuestas** `(conversation_id, organization_id) → conversations (id, organization_id)`: la DB garantiza que hijo y padre son del mismo tenant, no solo el código.
 
 **Otras.** `timestamptz(3)` en `created_at` / `last_message_at`: `Date` en JS tiene milisegundos, `timestamptz` microsegundos; probando encontré que el cursor (ISO string) podía saltear una fila en esos microsegundos. `last_message_at` es siempre `max(created_at)` de sus mensajes, así coincide con el `lastMessage` embebido. El saliente se persiste `pending` y commitea **antes** de llamar al proveedor: no sostengo una conexión esperando un servicio externo y un fallo queda como `failed` reintentable. Una conversación por contacto (`UNIQUE (contact_id)`), sin estados en este alcance.
 

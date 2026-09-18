@@ -30,13 +30,15 @@ CREATE TABLE contacts (
   created_at      timestamptz NOT NULL DEFAULT now(),
   -- Un contacto es único por (tenant, canal, id externo). Es la clave con la que
   -- el webhook hace el upsert "crear si no existe".
-  CONSTRAINT contacts_org_channel_external_uniq UNIQUE (organization_id, channel, external_id)
+  CONSTRAINT contacts_org_channel_external_uniq UNIQUE (organization_id, channel, external_id),
+  -- Target de las FKs compuestas de abajo (ver conversations).
+  CONSTRAINT contacts_id_org_uniq UNIQUE (id, organization_id)
 );
 
 CREATE TABLE conversations (
   id              uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid        NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  contact_id      uuid        NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+  contact_id      uuid        NOT NULL,
   channel         channel     NOT NULL,
   -- Desnormalizado: siempre = max(created_at) de sus mensajes; se actualiza en cada insert.
   -- Es lo que hace barato ordenar la bandeja por "último mensaje".
@@ -45,13 +47,18 @@ CREATE TABLE conversations (
   last_message_at timestamptz(3) NOT NULL DEFAULT now(),
   created_at      timestamptz NOT NULL DEFAULT now(),
   -- Decisión: una conversación abierta por contacto (sin estado open/closed en este alcance).
-  CONSTRAINT conversations_contact_uniq UNIQUE (contact_id)
+  CONSTRAINT conversations_contact_uniq UNIQUE (contact_id),
+  -- FK compuesta: la DB garantiza que la conversación y su contacto son del MISMO tenant.
+  -- Sin esto, la consistencia dependería solo del código de la app.
+  CONSTRAINT conversations_contact_fk
+    FOREIGN KEY (contact_id, organization_id) REFERENCES contacts (id, organization_id) ON DELETE CASCADE,
+  CONSTRAINT conversations_id_org_uniq UNIQUE (id, organization_id)
 );
 
 CREATE TABLE messages (
   id              uuid              PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid              NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  conversation_id uuid              NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  conversation_id uuid              NOT NULL,
   direction       message_direction NOT NULL,
   status          message_status    NOT NULL,
   body            text              NOT NULL,
@@ -63,7 +70,10 @@ CREATE TABLE messages (
   -- choca acá y se descarta con ON CONFLICT DO NOTHING.
   -- Scope por conversación (que ya implica tenant y canal): distintos proveedores pueden repetir ids.
   -- NULL no colisiona en UNIQUE de Postgres, así que los outbound sin id no molestan.
-  CONSTRAINT messages_external_id_uniq UNIQUE (conversation_id, external_id)
+  CONSTRAINT messages_external_id_uniq UNIQUE (conversation_id, external_id),
+  -- Idem: un mensaje no puede apuntar a una conversación de otro tenant.
+  CONSTRAINT messages_conversation_fk
+    FOREIGN KEY (conversation_id, organization_id) REFERENCES conversations (id, organization_id) ON DELETE CASCADE
 );
 
 -- Índices -------------------------------------------------------------------
@@ -77,6 +87,6 @@ CREATE INDEX conversations_org_last_message_idx
 CREATE INDEX messages_conversation_created_idx
   ON messages (conversation_id, created_at DESC, id DESC);
 
--- FK inversa que Postgres NO indexa solo (JOIN contacts→org y ON DELETE CASCADE).
--- conversations.contact_id ya está cubierta por el UNIQUE de arriba.
-CREATE INDEX contacts_org_idx ON contacts (organization_id);
+-- No hay índice aparte para contacts.organization_id: el UNIQUE (organization_id, channel,
+-- external_id) ya es un B-tree que empieza por esa columna y cubre el filtro por tenant.
+-- conversations.contact_id está cubierta por su UNIQUE.
