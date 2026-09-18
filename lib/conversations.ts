@@ -16,27 +16,40 @@ import { sendMessage } from "@/lib/provider";
 // todo se corre y ves repetidos/salteados. El cursor es opaco para el cliente.
 // ---------------------------------------------------------------------------
 
-export const listParamsSchema = z.object({
-  limit: z.coerce.number().int().min(1).max(100).default(20),
-  cursor: z.string().optional(),
-});
-
 type Cursor = { lastMessageAt: string; id: string };
+
+const cursorSchema = z.object({ lastMessageAt: z.iso.datetime(), id: z.uuid() });
 
 function encodeCursor(c: Cursor): string {
   return Buffer.from(JSON.stringify(c)).toString("base64url");
 }
 
-function decodeCursor(raw: string | undefined): Cursor | null {
-  if (!raw) return null;
+function decodeCursor(raw: string): Cursor | null {
   try {
     const parsed: unknown = JSON.parse(Buffer.from(raw, "base64url").toString("utf8"));
-    const result = z.object({ lastMessageAt: z.iso.datetime(), id: z.uuid() }).safeParse(parsed);
+    const result = cursorSchema.safeParse(parsed);
     return result.success ? result.data : null;
   } catch {
     return null;
   }
 }
+
+// Un cursor malformado es 400, no "volvé a la primera página" en silencio.
+export const listParamsSchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  cursor: z
+    .string()
+    .optional()
+    .transform((raw, ctx): Cursor | null => {
+      if (raw === undefined) return null;
+      const cursor = decodeCursor(raw);
+      if (!cursor) {
+        ctx.addIssue({ code: "custom", message: "Cursor inválido" });
+        return z.NEVER;
+      }
+      return cursor;
+    }),
+});
 
 type ListRow = {
   id: string;
@@ -58,7 +71,7 @@ export async function listConversations(
   organizationId: string,
   params: z.infer<typeof listParamsSchema>,
 ): Promise<Page<ConversationListItem>> {
-  const cursor = decodeCursor(params.cursor);
+  const { cursor } = params;
   const rows = await query<ListRow>(
     `SELECT c.id, c.channel, c.last_message_at,
             ct.id AS contact_id, ct.external_id AS contact_external_id,
