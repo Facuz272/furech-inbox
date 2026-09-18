@@ -2,7 +2,7 @@
 // Es un test de integración contra Postgres a propósito: la idempotencia vive en un
 // constraint de la DB, mockear la DB sería testear nada.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { pool, query } from "@/lib/db";
+import { firstRow, pool, query } from "@/lib/db";
 import { ingestInboundMessage } from "@/lib/webhook";
 
 let orgId: string;
@@ -11,7 +11,7 @@ beforeAll(async () => {
   const rows = await query<{ id: string }>(
     `INSERT INTO organizations (name) VALUES ('test-org') RETURNING id`,
   );
-  orgId = rows[0]!.id;
+  orgId = firstRow(rows, "organizations").id;
 });
 
 afterAll(async () => {
@@ -39,7 +39,7 @@ describe("webhook idempotency", () => {
       `SELECT count(*)::text AS n FROM messages WHERE conversation_id = $1`,
       [first.conversationId],
     );
-    expect(count[0]!.n).toBe("1");
+    expect(firstRow(count, "count").n).toBe("1");
   });
 
   it("does not duplicate under concurrent retries", async () => {

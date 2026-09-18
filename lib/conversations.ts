@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { pool, query } from "@/lib/db";
+import { firstRow, pool, query } from "@/lib/db";
 import type {
   Channel,
   ConversationListItem,
@@ -204,7 +204,7 @@ export async function sendOutboundMessage(
        RETURNING id, conversation_id, direction, status, body, created_at`,
       [organizationId, conversationId, text],
     );
-    pending = inserted.rows[0]!;
+    pending = firstRow(inserted.rows, "messages");
     await client.query(touchConversationSql, [conversationId]);
     await client.query("COMMIT");
   } catch (err) {

@@ -21,3 +21,11 @@ export async function query<T extends QueryResultRow>(
   const result = await pool.query<T>(text, params as unknown[]);
   return result.rows;
 }
+
+// Para INSERT … RETURNING / SELECT que por construcción devuelven exactamente una fila.
+// Falla explícito en vez de un `rows[0]!` que esconde el caso imposible.
+export function firstRow<T>(rows: readonly T[], what: string): T {
+  const row = rows[0];
+  if (row === undefined) throw new Error(`Se esperaba una fila de ${what} y no vino ninguna`);
+  return row;
+}

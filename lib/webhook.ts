@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { pool, query } from "@/lib/db";
+import { firstRow, pool, query } from "@/lib/db";
 import type { Channel } from "@/lib/types";
 import { touchConversationSql } from "@/lib/conversations";
 
@@ -59,7 +59,7 @@ export async function ingestInboundMessage(
        RETURNING id`,
       [organizationId, channel, msg.from.id, msg.from.name ?? null],
     );
-    const contactId = contact.rows[0]!.id;
+    const contactId = firstRow(contact.rows, "contacts").id;
 
     // 2. Conversación: una por contacto (ver constraint en el schema).
     const conversation = await client.query<{ id: string }>(
@@ -69,7 +69,7 @@ export async function ingestInboundMessage(
        RETURNING id`,
       [organizationId, contactId, channel],
     );
-    const conversationId = conversation.rows[0]!.id;
+    const conversationId = firstRow(conversation.rows, "conversations").id;
 
     // 3. Mensaje: acá vive la idempotencia.
     const inserted = await client.query<{ id: string }>(
