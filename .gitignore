@@ -42,3 +42,6 @@ next-env.d.ts
 
 # Mantener el ejemplo versionado
 !.env.example
+
+# Config local del editor/agente
+.claude/

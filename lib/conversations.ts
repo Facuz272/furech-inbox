@@ -141,14 +141,6 @@ function toListItem(r: ListRow): ConversationListItem {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Mensaje saliente
-// ---------------------------------------------------------------------------
-
-export const outboundMessageSchema = z.object({
-  text: z.string().trim().min(1).max(4000),
-});
-
 type MessageRow = {
   id: string;
   conversation_id: string;
@@ -168,6 +160,33 @@ export function toMessageDTO(r: MessageRow): MessageDTO {
     createdAt: r.created_at.toISOString(),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Hilo de una conversación (para /inbox). Filtra por org: ajena ⇒ [] como inexistente.
+// ---------------------------------------------------------------------------
+
+export async function listMessages(
+  organizationId: string,
+  conversationId: string,
+): Promise<MessageDTO[]> {
+  const rows = await query<MessageRow>(
+    `SELECT id, conversation_id, direction, status, body, created_at
+     FROM messages
+     WHERE conversation_id = $1 AND organization_id = $2
+     ORDER BY created_at ASC, id ASC`,
+    [conversationId, organizationId],
+  );
+  return rows.map(toMessageDTO);
+}
+
+// ---------------------------------------------------------------------------
+// Mensaje saliente
+// ---------------------------------------------------------------------------
+
+export const outboundMessageSchema = z.object({
+  text: z.string().trim().min(1).max(4000),
+});
+
 
 // Devuelve null si la conversación no existe O no es de esta organización:
 // misma respuesta en ambos casos para no filtrar ids de otros tenants.

@@ -22,7 +22,7 @@ curl "localhost:3000/api/conversations?limit=20"
 curl -X POST localhost:3000/api/conversations/<id>/messages -H "content-type: application/json" -d '{"text":"Hola Ana"}'
 ```
 
-Mapa: [`db/001_init.sql`](db/001_init.sql) · [`lib/webhook.ts`](lib/webhook.ts) (entrante) · [`lib/conversations.ts`](lib/conversations.ts) (listado + saliente) · [`lib/provider.ts`](lib/provider.ts) (stub) · [`tests/webhook-idempotency.test.ts`](tests/webhook-idempotency.test.ts) (opcional elegido).
+Mapa: [`db/001_init.sql`](db/001_init.sql) · [`lib/webhook.ts`](lib/webhook.ts) (entrante) · [`lib/conversations.ts`](lib/conversations.ts) (listado + hilo + saliente) · [`lib/provider.ts`](lib/provider.ts) (stub) · [`tests/webhook-idempotency.test.ts`](tests/webhook-idempotency.test.ts) (opcional 6) · [`app/inbox`](app/inbox) (opcional 5, hecho después del time-box).
 
 ## Decisiones
 
@@ -38,7 +38,7 @@ Mapa: [`db/001_init.sql`](db/001_init.sql) · [`lib/webhook.ts`](lib/webhook.ts)
 
 ## Qué quedó afuera / con 2 h más
 
-- **`/inbox`**: elegí el test. Lo haría como server component que llama a `listConversations` directo (sin fetch a mi propia API), con un client component solo para el form de envío.
+- Dentro de las 2 h elegí el test. `/inbox` lo agregué después, fuera del time-box: server component que llama a `listConversations`/`listMessages` directo (sin fetch a mi propia API), selección por `?c=<id>`, y un único client component para el form de envío que hace `router.refresh()`.
 - **Adapters por proveedor**: asumo un payload normalizado; WhatsApp Cloud API y Telegram tienen shapes distintos.
 - **Firma del webhook** (HMAC / secret token) además del bearer. **`GET /api/conversations/[id]/messages`** paginado. **Reintentos** del saliente y webhook de estado (`delivered`/`read`). **RLS** como segunda defensa. Tabla de migraciones aplicadas (hoy `db:migrate` no es re-ejecutable).
 
